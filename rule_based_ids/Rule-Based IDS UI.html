@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rule-Based IDS</title>
+<style>
+:root{--bg:#f3f5fb;--bg2:#e6ebf8;--panel:#ffffff;--card:#f6f8fd;--line:#d8dfef;--fg:#16213b;--mut:#5d6a88;
+--acc:#4f46e5;--acc2:#0891b2;--ok:#059669;--bad:#e11d48;--warn:#d97706;--hl:#fff1a8;--glow:rgba(79,70,229,.18);
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a0f1e;--bg2:#111a33;--panel:#121a31;--card:#18223f;--line:#27345c;--fg:#e8edfb;--mut:#92a0c4;
+--acc:#8b87ff;--acc2:#22d3ee;--ok:#34d399;--bad:#fb7185;--warn:#fbbf24;--hl:#5b4b08;--glow:rgba(139,135,255,.28);color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0a0f1e;--bg2:#111a33;--panel:#121a31;--card:#18223f;--line:#27345c;--fg:#e8edfb;--mut:#92a0c4;
+--acc:#8b87ff;--acc2:#22d3ee;--ok:#34d399;--bad:#fb7185;--warn:#fbbf24;--hl:#5b4b08;--glow:rgba(139,135,255,.28);color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 500px at 10% -10%,var(--bg2),transparent),var(--bg);color:var(--fg);
+font:14px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+.wrap{max-width:1280px;margin:0 auto;padding:18px 16px 40px}
+code{font:12.5px ui-monospace,Menlo,Consolas,monospace;background:var(--card);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.muted{color:var(--mut)}
+/* hero */
+.hero{position:relative;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;padding:20px;border-radius:18px;border:1px solid var(--line);
+background:linear-gradient(135deg,var(--glow),transparent 60%),var(--panel);box-shadow:0 10px 40px -20px var(--glow)}
+.hero{padding-right:64px}
+.brand{display:flex;gap:14px;align-items:center;min-width:0}
+.logo{font-size:34px;width:58px;height:58px;display:grid;place-items:center;border-radius:16px;background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 8px 24px -8px var(--acc)}
+h1{margin:0;font-size:clamp(20px,3.2vw,28px);letter-spacing:-.02em;line-height:1.15}
+.grad{background:linear-gradient(90deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand p{margin:3px 0 0;color:var(--mut);max-width:560px}
+.kpis{display:flex;gap:10px;flex-wrap:wrap}
+.kpi{min-width:92px;padding:8px 14px;border-radius:12px;background:var(--card);border:1px solid var(--line);text-align:center}
+.kpi b{display:block;font-size:22px;line-height:1.1}.kpi span{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+#theme{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:18px}
+/* layout */
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
+@media(max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;min-width:0}
+h2{margin:0 0 4px;font-size:16px;display:flex;align-items:center;gap:10px}
+h2 .n{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;color:#fff;background:linear-gradient(135deg,var(--acc),var(--acc2))}
+h3{margin:0 0 8px;font-size:15px}h4{margin:2px 0 6px;font-size:17px}
+.hint{margin:0 0 10px;color:var(--mut);font-size:13px}
+/* buttons */
+button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 13px;cursor:pointer;transition:transform .08s,box-shadow .15s,border-color .15s}
+button:hover:not(:disabled){border-color:var(--acc);box-shadow:0 0 0 3px var(--glow)}button:active:not(:disabled){transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:default}
+button.p{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;border-color:transparent;font-weight:600}
+button.mini{width:30px;height:30px;padding:0;border-radius:50%;flex:none}
+button.x{border:0;background:transparent;color:var(--mut);padding:0 6px;font-size:18px;line-height:1}button.x:hover:not(:disabled){color:var(--bad);box-shadow:none}
+input{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 11px;min-width:0}
+input:focus{outline:2px solid var(--acc);outline-offset:1px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+/* cards & library */
+.lib{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}
+@media(max-width:560px){.lib{grid-template-columns:minmax(0,1fr)}}
+.card{display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
+.lib-card{cursor:grab}.lib-card:hover{border-color:var(--acc)}.lib-card.on{opacity:.55}
+.lib-card .ic{font-size:20px;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--panel);flex:none}
+.lib-card .ic.rid{font:700 12px ui-monospace,Menlo,monospace;color:var(--acc)}
+.grow{flex:1;min-width:0}.lib-card small{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--mut);font-size:11.5px;line-height:1.3}
+.lib-card b{font-size:13px;display:block;line-height:1.25}
+.dragging{opacity:.4}
+.zone{position:relative;border:2px dashed var(--line);border-radius:14px;padding:8px;transition:border-color .15s,background .15s}
+body.dnd .zone{border-color:var(--acc2)}
+.zone.over{border-color:var(--acc);background:var(--glow)}
+.zone .empty{display:none;align-items:center;justify-content:center;min-height:90px;color:var(--mut);text-align:center;padding:10px}
+.emptybox{align-items:center;justify-content:center;min-height:70px;color:var(--mut);text-align:center}
+#ruleZone{min-height:60px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:4px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 10px;border-radius:99px;background:var(--card);border:1px solid var(--line);font-size:12.5px;cursor:grab}
+.chip button{border:0;background:transparent;padding:0 6px;color:var(--mut);font-size:15px}
+.scroll{max-height:250px;overflow:auto;border-radius:10px}
+table{border-collapse:collapse;width:100%;font:12px ui-monospace,Menlo,Consolas,monospace}
+th{position:sticky;top:0;background:var(--panel);color:var(--mut);text-align:left;font-weight:600}
+td,th{padding:3px 8px;white-space:nowrap}tbody tr:nth-child(even){background:color-mix(in srgb,var(--card) 60%,transparent)}
+tr.hl,tr.hl td{background:var(--hl)!important}
+td.fx{color:var(--mut)}
+.ev{padding:0 7px;border-radius:99px;font-size:11px;border:1px solid var(--line)}
+.ev.LOGIN_FAILED{color:var(--bad)}.ev.LOGIN_SUCCESS{color:var(--ok)}.ev.CONNECTION{color:var(--acc2)}.ev.PRIV_CHANGE{color:var(--warn)}
+/* rule cards */
+.rcard{margin-bottom:8px;border-left:4px solid var(--line);align-items:flex-start}
+.rcard.sev-critical{border-left-color:var(--bad)}.rcard.sev-high{border-left-color:var(--warn)}.rcard.sev-medium{border-left-color:var(--acc2)}
+.handle{cursor:grab;font-size:20px;color:var(--mut);padding:0 2px;user-select:none}
+.rtop{display:flex;gap:8px;align-items:center}.rid{color:var(--acc)}.order{margin-left:auto;color:var(--mut);font-size:12px}
+.rdesc{font-size:13px}.rdesc i{color:var(--mut)}
+.params{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+.params label{font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}.params input{width:76px;padding:3px 7px}
+.warn{margin-top:6px;font-size:12px;color:var(--warn)}
+.sev{font-size:11px;padding:0 8px;border-radius:99px;border:1px solid currentColor;font-weight:600;white-space:nowrap}
+.sev.critical{color:var(--bad)}.sev.high{color:var(--warn)}.sev.medium{color:var(--acc2)}
+/* inference */
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.controls input{flex:1;min-width:200px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.tries{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;align-items:center}.tries button{font-size:12px;padding:3px 10px;border-radius:99px}
+.progress{height:5px;border-radius:9px;background:var(--card);overflow:hidden;margin:12px 0}.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .25s}
+.cols{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}}
+.pane-t{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);margin:0 0 6px}
+#story{list-style:none;margin:0;padding:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;max-height:420px;overflow:auto;font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace}
+#story li{display:flex;gap:8px;padding:2px 6px;border-radius:6px;margin-left:calc(var(--d,0)*16px)}
+@media(max-width:600px){#story li{margin-left:calc(var(--d,0)*6px);font-size:12px}}
+@media(max-width:900px){.callout{position:static}}
+#story li.cur{background:var(--hl);animation:in .25s ease}.ico{flex:none;width:16px;text-align:center}
+#story .fire,#story .ok{color:var(--ok)}#story .fail{color:var(--bad)}#story .round,#story .goal,#story .done{font-weight:700}#story .skip,#story .cond{color:var(--mut)}
+@keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.callout{position:sticky;top:12px;border:2px solid var(--k,var(--acc));background:linear-gradient(160deg,color-mix(in srgb,var(--k,var(--acc)) 16%,var(--panel)),var(--panel) 70%);
+box-shadow:0 12px 36px -16px var(--k,var(--acc));animation:pop .3s ease}
+@keyframes pop{from{transform:scale(.985);opacity:.6}to{transform:none;opacity:1}}
+.callout .ct{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--k,var(--acc));font-weight:700;margin-bottom:6px}
+.callout p{margin:0;font-size:14.5px}
+.evid{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}.evid ul{list-style:none;margin:0;padding:0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace}.evid li{background:var(--hl);border-radius:5px;padding:0 6px;margin:2px 0}.callout h4{color:var(--fg)}
+.callout.k-fire{--k:var(--ok)}.callout.k-fail{--k:var(--bad)}.callout.k-round{--k:var(--acc)}.callout.k-rule{--k:var(--warn)}.callout.k-skip{--k:var(--mut)}.callout.k-goal{--k:var(--acc2)}
+/* results */
+#results .panel{margin-top:16px}
+.summary{border-color:var(--acc);background:linear-gradient(160deg,var(--glow),transparent 60%),var(--panel)}
+.summary.yes{border-color:var(--ok)}.summary.no{border-color:var(--bad)}
+.summary ul{margin:0;padding:0;list-style:none}.summary li{padding:6px 0;border-bottom:1px dashed var(--line)}.summary li:last-child{border:0}
+.tag{font:600 11px ui-monospace,monospace;color:var(--acc);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:0 6px;margin-right:4px}
+pre{margin:8px 0;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow-x:auto;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,30px);opacity:0;pointer-events:none;background:var(--fg);color:var(--bg);padding:8px 16px;border-radius:99px;font-size:13px;transition:.25s;z-index:9;max-width:90vw}
+#toast.show{opacity:1;transform:translate(-50%,0)}#toast.bad{background:var(--bad);color:#fff}
+.legend{margin:14px 2px 0;color:var(--mut);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="brand"><div class="logo">🛡️</div><div><h1>Rule-Based <span class="grad">Intrusion Detection</span></h1>
+  <p>Classical AI: logic rules + forward &amp; backward chaining. No machine learning, no GenAI. Drag logs and rules in, then watch the engine reason.</p></div></div>
+  <div class="kpis"><div class="kpi"><b id="k-ev">0</b><span>events</span></div><div class="kpi"><b id="k-fx">0</b><span>facts</span></div>
+  <div class="kpi"><b id="k-ru">0</b><span>rules on</span></div><div class="kpi"><b id="k-al">–</b><span>derived</span></div></div>
+  <button id="theme" title="Toggle light / dark">◐</button>
+</header>
+
+<div class="grid2">
+  <section class="panel">
+    <h2><span class="n">1</span>Log events</h2>
+    <p class="hint">Drag a scenario card into the log below (or tap <b>+</b>). You can also drop a <b>.csv</b> file straight onto the log.</p>
+    <div id="bundles" class="lib zone"></div>
+    <div id="logzone" class="zone">
+      <div id="logchips" class="chips"></div>
+      <div class="scroll"><table id="log"><thead><tr><th>#</th><th>time</th><th>event</th><th>user</th><th>ip</th><th>detail</th><th>becomes fact</th><th></th></tr></thead><tbody id="logbody"></tbody></table></div>
+      <div id="logempty" class="empty">Empty log - drop scenario cards or a CSV file here</div>
+    </div>
+    <div class="row"><button id="csvbtn">📄 Import CSV</button><input id="csvfile" type="file" accept=".csv,text/csv" hidden><button id="clearlog">Clear</button><button id="resetlog">Reset sample</button></div>
+  </section>
+  <section class="panel">
+    <h2><span class="n">2</span>Rules · knowledge base</h2>
+    <p class="hint">Drag rules from the library into <b>Active rules</b>, reorder them, or drag them back out. Edit thresholds right on the card.</p>
+    <div id="ruleLib" class="lib zone"></div>
+    <div class="pane-t">Active rules (the engine uses only these)</div>
+    <div id="ruleZone" class="zone"></div>
+    <div id="ruleEmpty" class="emptybox" style="display:none">No active rules - drag some in</div>
+    <div class="row"><button id="allrules">Activate all</button><button id="norules">Deactivate all</button></div>
+  </section>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <h2><span class="n">3</span>Inference</h2>
+  <div class="controls"><button class="p" id="fwd">▶ Run forward chaining</button><span class="muted">or test a hypothesis:</span>
+    <input id="goal" value="is_intrusion(carol)" spellcheck="false" aria-label="Goal"><button class="p" id="ask">Ask · backward chaining</button></div>
+  <div class="tries"><span class="muted">Try:</span>
+    <button data-g="is_intrusion(carol)">is_intrusion(carol)</button><button data-g="brute_force(X)">brute_force(X)</button>
+    <button data-g="brute_force(192.0.2.50)">why not 192.0.2.50?</button><button data-g="privilege_escalation(alice)">why not alice?</button><button data-g="port_scan(10.0.0.30)">why not 10.0.0.30?</button></div>
+  <div class="controls"><button id="step" disabled>Step ▶</button><button id="play" disabled>▶ Play</button>
+    <select id="speed" style="font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:6px"><option value="1700">Slow</option><option value="900" selected>Normal</option><option value="350">Fast</option></select>
+    <button id="all" disabled>Show all ⏭</button></div>
+  <div class="progress"><i id="bar"></i></div>
+  <div class="cols">
+    <div><div class="pane-t">⌨ Code output · engine trace</div><ul id="story"></ul></div>
+    <div><div class="pane-t">💡 In plain English</div><div id="explain" class="panel callout"></div></div>
+  </div>
+</section>
+<div id="results"></div>
+<p class="legend">Log rows highlighted in yellow are the evidence behind the step you are looking at. Changing the log or rules resets the inference so results always match what you see.</p>
+</div>
+<div id="toast"></div>
+<script>
+const SAMPLE_CSV = `timestamp,event,user,src_ip,detail
+2026-10-13 09:00:50,LOGIN_SUCCESS,dave,10.0.0.12,
+2026-10-13 09:05:31,LOGIN_SUCCESS,alice,10.0.0.11,
+2026-10-13 09:08:39,LOGIN_SUCCESS,bob,10.0.0.21,
+2026-10-13 09:09:24,LOGIN_SUCCESS,carol,10.0.0.31,
+2026-10-13 09:09:44,LOGIN_SUCCESS,erin,10.0.0.41,
+2026-10-13 09:13:11,CONNECTION,-,10.0.0.11,80
+2026-10-13 09:20:00,LOGIN_FAILED,carol,198.51.100.23,
+2026-10-13 09:20:03,LOGIN_FAILED,carol,198.51.100.23,
+2026-10-13 09:20:06,LOGIN_FAILED,carol,198.51.100.23,
+2026-10-13 09:20:09,LOGIN_FAILED,carol,198.51.100.23,
+2026-10-13 09:20:12,LOGIN_FAILED,carol,198.51.100.23,
+2026-10-13 09:20:15,LOGIN_FAILED,carol,198.51.100.23,
+2026-10-13 09:20:18,LOGIN_FAILED,carol,198.51.100.23,
+2026-10-13 09:20:30,LOGIN_SUCCESS,carol,198.51.100.23,
+2026-10-13 09:23:28,CONNECTION,-,10.0.0.21,8080
+2026-10-13 09:28:08,CONNECTION,-,10.0.0.41,443
+2026-10-13 09:30:00,LOGIN_FAILED,admin,203.0.113.9,
+2026-10-13 09:30:02,LOGIN_FAILED,admin,203.0.113.9,
+2026-10-13 09:30:04,LOGIN_FAILED,admin,203.0.113.9,
+2026-10-13 09:30:06,LOGIN_FAILED,admin,203.0.113.9,
+2026-10-13 09:30:08,LOGIN_FAILED,admin,203.0.113.9,
+2026-10-13 09:30:10,LOGIN_FAILED,admin,203.0.113.9,
+2026-10-13 09:33:20,CONNECTION,-,203.0.113.77,20
+2026-10-13 09:33:20,CONNECTION,-,203.0.113.77,21
+2026-10-13 09:33:20,CONNECTION,-,203.0.113.77,22
+2026-10-13 09:33:20,CONNECTION,-,203.0.113.77,23
+2026-10-13 09:33:20,CONNECTION,-,203.0.113.77,24
+2026-10-13 09:33:21,CONNECTION,-,203.0.113.77,25
+2026-10-13 09:33:21,CONNECTION,-,203.0.113.77,26
+2026-10-13 09:33:21,CONNECTION,-,203.0.113.77,27
+2026-10-13 09:33:21,CONNECTION,-,203.0.113.77,28
+2026-10-13 09:33:21,CONNECTION,-,203.0.113.77,29
+2026-10-13 09:33:22,CONNECTION,-,203.0.113.77,30
+2026-10-13 09:33:22,CONNECTION,-,203.0.113.77,31
+2026-10-13 09:33:22,CONNECTION,-,203.0.113.77,32
+2026-10-13 09:33:22,CONNECTION,-,203.0.113.77,33
+2026-10-13 09:33:22,CONNECTION,-,203.0.113.77,34
+2026-10-13 09:33:23,CONNECTION,-,203.0.113.77,35
+2026-10-13 09:33:23,CONNECTION,-,203.0.113.77,36
+2026-10-13 09:33:23,CONNECTION,-,203.0.113.77,37
+2026-10-13 09:33:23,CONNECTION,-,203.0.113.77,38
+2026-10-13 09:33:23,CONNECTION,-,203.0.113.77,39
+2026-10-13 09:33:24,CONNECTION,-,203.0.113.77,40
+2026-10-13 09:33:24,CONNECTION,-,203.0.113.77,41
+2026-10-13 09:33:24,CONNECTION,-,203.0.113.77,42
+2026-10-13 09:33:24,CONNECTION,-,203.0.113.77,43
+2026-10-13 09:33:24,CONNECTION,-,203.0.113.77,44
+2026-10-13 09:33:25,CONNECTION,-,203.0.113.77,45
+2026-10-13 09:33:25,CONNECTION,-,203.0.113.77,46
+2026-10-13 09:33:25,CONNECTION,-,203.0.113.77,47
+2026-10-13 09:33:25,CONNECTION,-,203.0.113.77,48
+2026-10-13 09:33:25,CONNECTION,-,203.0.113.77,49
+2026-10-13 09:39:23,CONNECTION,-,10.0.0.12,80
+2026-10-13 09:40:00,LOGIN_FAILED,erin,10.0.0.41,
+2026-10-13 09:40:10,LOGIN_SUCCESS,erin,10.0.0.41,
+2026-10-13 09:41:11,CONNECTION,-,10.0.0.11,8080
+2026-10-13 09:50:00,LOGIN_FAILED,bob,10.0.0.22,
+2026-10-13 09:50:07,LOGIN_FAILED,bob,10.0.0.22,
+2026-10-13 09:50:14,LOGIN_FAILED,bob,10.0.0.22,
+2026-10-13 09:50:30,LOGIN_SUCCESS,bob,10.0.0.22,
+2026-10-13 09:58:37,CONNECTION,-,10.0.0.21,80
+2026-10-13 10:00:00,LOGIN_FAILED,alice,192.0.2.50,
+2026-10-13 10:00:22,CONNECTION,-,10.0.0.12,80
+2026-10-13 10:00:30,LOGIN_FAILED,alice,192.0.2.50,
+2026-10-13 10:00:57,CONNECTION,-,10.0.0.31,80
+2026-10-13 10:01:00,LOGIN_FAILED,alice,192.0.2.50,
+2026-10-13 10:01:30,LOGIN_FAILED,alice,192.0.2.50,
+2026-10-13 10:02:00,LOGIN_FAILED,alice,192.0.2.50,
+2026-10-13 10:05:43,CONNECTION,-,10.0.0.21,80
+2026-10-13 10:06:40,CONNECTION,-,10.0.0.30,1000
+2026-10-13 10:06:40,CONNECTION,-,10.0.0.30,1001
+2026-10-13 10:06:41,CONNECTION,-,10.0.0.30,1002
+2026-10-13 10:06:41,CONNECTION,-,10.0.0.30,1003
+2026-10-13 10:06:42,CONNECTION,-,10.0.0.30,1004
+2026-10-13 10:06:42,CONNECTION,-,10.0.0.30,1005
+2026-10-13 10:06:43,CONNECTION,-,10.0.0.30,1006
+2026-10-13 10:06:43,CONNECTION,-,10.0.0.30,1007
+2026-10-13 10:06:44,CONNECTION,-,10.0.0.30,1008
+2026-10-13 10:06:44,CONNECTION,-,10.0.0.30,1009
+2026-10-13 10:06:45,CONNECTION,-,10.0.0.30,1010
+2026-10-13 10:06:45,CONNECTION,-,10.0.0.30,1011
+2026-10-13 10:06:46,CONNECTION,-,10.0.0.30,1012
+2026-10-13 10:06:46,CONNECTION,-,10.0.0.30,1013
+2026-10-13 10:06:47,CONNECTION,-,10.0.0.30,1014
+2026-10-13 10:19:04,CONNECTION,-,10.0.0.12,8080
+2026-10-13 10:20:00,LOGIN_SUCCESS,dave,10.0.0.12,
+2026-10-13 10:20:03,PRIV_CHANGE,dave,10.0.0.12,admin
+2026-10-13 10:24:14,CONNECTION,-,10.0.0.41,443
+2026-10-13 10:35:00,LOGIN_SUCCESS,alice,10.0.0.11,
+2026-10-13 10:39:51,CONNECTION,-,10.0.0.11,80
+2026-10-13 10:41:41,CONNECTION,-,10.0.0.41,80
+2026-10-13 10:54:11,CONNECTION,-,10.0.0.21,80
+2026-10-13 10:55:55,CONNECTION,-,10.0.0.31,80
+2026-10-13 11:26:19,CONNECTION,-,10.0.0.11,80
+2026-10-13 11:29:34,CONNECTION,-,10.0.0.41,80
+2026-10-13 11:30:00,PRIV_CHANGE,alice,10.0.0.11,admin
+2026-10-13 11:32:00,CONNECTION,-,10.0.0.12,443
+2026-10-13 11:34:24,CONNECTION,-,10.0.0.31,80
+2026-10-13 11:37:35,CONNECTION,-,10.0.0.31,8080`;
+const BUNDLES = [{"id": "normal", "icon": "\ud83d\ude42", "name": "Normal traffic", "desc": "Everyday logins and connections, plus one harmless typo.", "rows": [{"timestamp": "2026-10-13 09:05:31", "event": "LOGIN_SUCCESS", "user": "alice", "src_ip": "10.0.0.11", "detail": ""}, {"timestamp": "2026-10-13 09:41:11", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.11", "detail": "8080"}, {"timestamp": "2026-10-13 09:13:11", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.11", "detail": "80"}, {"timestamp": "2026-10-13 11:26:19", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.11", "detail": "80"}, {"timestamp": "2026-10-13 10:39:51", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.11", "detail": "80"}, {"timestamp": "2026-10-13 09:08:39", "event": "LOGIN_SUCCESS", "user": "bob", "src_ip": "10.0.0.21", "detail": ""}, {"timestamp": "2026-10-13 09:58:37", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.21", "detail": "80"}, {"timestamp": "2026-10-13 09:23:28", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.21", "detail": "8080"}, {"timestamp": "2026-10-13 10:54:11", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.21", "detail": "80"}, {"timestamp": "2026-10-13 10:05:43", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.21", "detail": "80"}, {"timestamp": "2026-10-13 09:09:24", "event": "LOGIN_SUCCESS", "user": "carol", "src_ip": "10.0.0.31", "detail": ""}, {"timestamp": "2026-10-13 10:55:55", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.31", "detail": "80"}, {"timestamp": "2026-10-13 11:34:24", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.31", "detail": "80"}, {"timestamp": "2026-10-13 10:00:57", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.31", "detail": "80"}, {"timestamp": "2026-10-13 11:37:35", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.31", "detail": "8080"}, {"timestamp": "2026-10-13 09:00:50", "event": "LOGIN_SUCCESS", "user": "dave", "src_ip": "10.0.0.12", "detail": ""}, {"timestamp": "2026-10-13 10:00:22", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.12", "detail": "80"}, {"timestamp": "2026-10-13 11:32:00", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.12", "detail": "443"}, {"timestamp": "2026-10-13 10:19:04", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.12", "detail": "8080"}, {"timestamp": "2026-10-13 09:39:23", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.12", "detail": "80"}, {"timestamp": "2026-10-13 09:09:44", "event": "LOGIN_SUCCESS", "user": "erin", "src_ip": "10.0.0.41", "detail": ""}, {"timestamp": "2026-10-13 10:24:14", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.41", "detail": "443"}, {"timestamp": "2026-10-13 09:28:08", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.41", "detail": "443"}, {"timestamp": "2026-10-13 10:41:41", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.41", "detail": "80"}, {"timestamp": "2026-10-13 11:29:34", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.41", "detail": "80"}, {"timestamp": "2026-10-13 09:40:00", "event": "LOGIN_FAILED", "user": "erin", "src_ip": "10.0.0.41", "detail": ""}, {"timestamp": "2026-10-13 09:40:10", "event": "LOGIN_SUCCESS", "user": "erin", "src_ip": "10.0.0.41", "detail": ""}]}, {"id": "near", "icon": "\ud83c\udfad", "name": "Benign look-alikes", "desc": "Almost-attacks that must NOT alert: 3 failures, slow failures, 15 connections, late admin grant.", "rows": [{"timestamp": "2026-10-13 09:50:00", "event": "LOGIN_FAILED", "user": "bob", "src_ip": "10.0.0.22", "detail": ""}, {"timestamp": "2026-10-13 09:50:07", "event": "LOGIN_FAILED", "user": "bob", "src_ip": "10.0.0.22", "detail": ""}, {"timestamp": "2026-10-13 09:50:14", "event": "LOGIN_FAILED", "user": "bob", "src_ip": "10.0.0.22", "detail": ""}, {"timestamp": "2026-10-13 09:50:30", "event": "LOGIN_SUCCESS", "user": "bob", "src_ip": "10.0.0.22", "detail": ""}, {"timestamp": "2026-10-13 10:00:00", "event": "LOGIN_FAILED", "user": "alice", "src_ip": "192.0.2.50", "detail": ""}, {"timestamp": "2026-10-13 10:00:30", "event": "LOGIN_FAILED", "user": "alice", "src_ip": "192.0.2.50", "detail": ""}, {"timestamp": "2026-10-13 10:01:00", "event": "LOGIN_FAILED", "user": "alice", "src_ip": "192.0.2.50", "detail": ""}, {"timestamp": "2026-10-13 10:01:30", "event": "LOGIN_FAILED", "user": "alice", "src_ip": "192.0.2.50", "detail": ""}, {"timestamp": "2026-10-13 10:02:00", "event": "LOGIN_FAILED", "user": "alice", "src_ip": "192.0.2.50", "detail": ""}, {"timestamp": "2026-10-13 10:06:40", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1000"}, {"timestamp": "2026-10-13 10:06:40", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1001"}, {"timestamp": "2026-10-13 10:06:41", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1002"}, {"timestamp": "2026-10-13 10:06:41", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1003"}, {"timestamp": "2026-10-13 10:06:42", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1004"}, {"timestamp": "2026-10-13 10:06:42", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1005"}, {"timestamp": "2026-10-13 10:06:43", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1006"}, {"timestamp": "2026-10-13 10:06:43", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1007"}, {"timestamp": "2026-10-13 10:06:44", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1008"}, {"timestamp": "2026-10-13 10:06:44", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1009"}, {"timestamp": "2026-10-13 10:06:45", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1010"}, {"timestamp": "2026-10-13 10:06:45", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1011"}, {"timestamp": "2026-10-13 10:06:46", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1012"}, {"timestamp": "2026-10-13 10:06:46", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1013"}, {"timestamp": "2026-10-13 10:06:47", "event": "CONNECTION", "user": "-", "src_ip": "10.0.0.30", "detail": "1014"}, {"timestamp": "2026-10-13 10:35:00", "event": "LOGIN_SUCCESS", "user": "alice", "src_ip": "10.0.0.11", "detail": ""}, {"timestamp": "2026-10-13 11:30:00", "event": "PRIV_CHANGE", "user": "alice", "src_ip": "10.0.0.11", "detail": "admin"}]}, {"id": "brute", "icon": "\ud83d\udd13", "name": "Brute force \u2192 takeover", "desc": "7 failed logins on carol from one IP, then a successful login.", "rows": [{"timestamp": "2026-10-13 09:20:00", "event": "LOGIN_FAILED", "user": "carol", "src_ip": "198.51.100.23", "detail": ""}, {"timestamp": "2026-10-13 09:20:03", "event": "LOGIN_FAILED", "user": "carol", "src_ip": "198.51.100.23", "detail": ""}, {"timestamp": "2026-10-13 09:20:06", "event": "LOGIN_FAILED", "user": "carol", "src_ip": "198.51.100.23", "detail": ""}, {"timestamp": "2026-10-13 09:20:09", "event": "LOGIN_FAILED", "user": "carol", "src_ip": "198.51.100.23", "detail": ""}, {"timestamp": "2026-10-13 09:20:12", "event": "LOGIN_FAILED", "user": "carol", "src_ip": "198.51.100.23", "detail": ""}, {"timestamp": "2026-10-13 09:20:15", "event": "LOGIN_FAILED", "user": "carol", "src_ip": "198.51.100.23", "detail": ""}, {"timestamp": "2026-10-13 09:20:18", "event": "LOGIN_FAILED", "user": "carol", "src_ip": "198.51.100.23", "detail": ""}, {"timestamp": "2026-10-13 09:20:30", "event": "LOGIN_SUCCESS", "user": "carol", "src_ip": "198.51.100.23", "detail": ""}]}, {"id": "fail", "icon": "\ud83d\udeaa", "name": "Brute force, no entry", "desc": "6 failed logins against 'admin'; the attacker never gets in.", "rows": [{"timestamp": "2026-10-13 09:30:00", "event": "LOGIN_FAILED", "user": "admin", "src_ip": "203.0.113.9", "detail": ""}, {"timestamp": "2026-10-13 09:30:02", "event": "LOGIN_FAILED", "user": "admin", "src_ip": "203.0.113.9", "detail": ""}, {"timestamp": "2026-10-13 09:30:04", "event": "LOGIN_FAILED", "user": "admin", "src_ip": "203.0.113.9", "detail": ""}, {"timestamp": "2026-10-13 09:30:06", "event": "LOGIN_FAILED", "user": "admin", "src_ip": "203.0.113.9", "detail": ""}, {"timestamp": "2026-10-13 09:30:08", "event": "LOGIN_FAILED", "user": "admin", "src_ip": "203.0.113.9", "detail": ""}, {"timestamp": "2026-10-13 09:30:10", "event": "LOGIN_FAILED", "user": "admin", "src_ip": "203.0.113.9", "detail": ""}]}, {"id": "scan", "icon": "\ud83d\udce1", "name": "Port scan", "desc": "30 connection attempts in 5 seconds from one IP.", "rows": [{"timestamp": "2026-10-13 09:33:20", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "20"}, {"timestamp": "2026-10-13 09:33:20", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "21"}, {"timestamp": "2026-10-13 09:33:20", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "22"}, {"timestamp": "2026-10-13 09:33:20", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "23"}, {"timestamp": "2026-10-13 09:33:20", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "24"}, {"timestamp": "2026-10-13 09:33:21", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "25"}, {"timestamp": "2026-10-13 09:33:21", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "26"}, {"timestamp": "2026-10-13 09:33:21", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "27"}, {"timestamp": "2026-10-13 09:33:21", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "28"}, {"timestamp": "2026-10-13 09:33:21", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "29"}, {"timestamp": "2026-10-13 09:33:22", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "30"}, {"timestamp": "2026-10-13 09:33:22", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "31"}, {"timestamp": "2026-10-13 09:33:22", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "32"}, {"timestamp": "2026-10-13 09:33:22", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "33"}, {"timestamp": "2026-10-13 09:33:22", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "34"}, {"timestamp": "2026-10-13 09:33:23", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "35"}, {"timestamp": "2026-10-13 09:33:23", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "36"}, {"timestamp": "2026-10-13 09:33:23", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "37"}, {"timestamp": "2026-10-13 09:33:23", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "38"}, {"timestamp": "2026-10-13 09:33:23", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "39"}, {"timestamp": "2026-10-13 09:33:24", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "40"}, {"timestamp": "2026-10-13 09:33:24", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "41"}, {"timestamp": "2026-10-13 09:33:24", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "42"}, {"timestamp": "2026-10-13 09:33:24", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "43"}, {"timestamp": "2026-10-13 09:33:24", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "44"}, {"timestamp": "2026-10-13 09:33:25", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "45"}, {"timestamp": "2026-10-13 09:33:25", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "46"}, {"timestamp": "2026-10-13 09:33:25", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "47"}, {"timestamp": "2026-10-13 09:33:25", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "48"}, {"timestamp": "2026-10-13 09:33:25", "event": "CONNECTION", "user": "-", "src_ip": "203.0.113.77", "detail": "49"}]}, {"id": "priv", "icon": "\u2b06\ufe0f", "name": "Privilege escalation", "desc": "dave logs in and becomes admin 3 seconds later.", "rows": [{"timestamp": "2026-10-13 10:20:00", "event": "LOGIN_SUCCESS", "user": "dave", "src_ip": "10.0.0.12", "detail": ""}, {"timestamp": "2026-10-13 10:20:03", "event": "PRIV_CHANGE", "user": "dave", "src_ip": "10.0.0.12", "detail": "admin"}]}];
+// ===== Rule-Based IDS engine: line-for-line port of ids/engine.py, rules.py, logs.py =====
+const V = n => ({ v: n });
+const isV = x => x !== null && typeof x === 'object' && 'v' in x;
+const anon = x => x.v[0] === '_';
+const fmtTime = t => new Date(t * 1000).toISOString().slice(11, 19);
+const fmtArgs = a => a.map(x => (x === null ? '_' : x)).join(', ');
+const short = f => `${f.pred}(${fmtArgs(f.args)})`;
+const fstr = f => `${short(f)}@${fmtTime(f.time)}`;
+const fact = (pred, args, time, row = -1) => ({ pred, args, time, row });
+const node = (text, kind, time, o = {}) => ({ text, kind, time, rule: null, children: [], row: -1, ...o });
+
+function evidenceRows(n) {
+  const rows = new Set(), st = [n];
+  while (st.length) { const x = st.pop(); if (x.row >= 0) rows.add(x.row); st.push(...x.children); }
+  return [...rows].sort((a, b) => a - b);
+}
+
+// ---- unification ----
+function unify(pat, vals, b) {
+  if (pat.length !== vals.length) return null;
+  const nb = { ...b };
+  for (let i = 0; i < pat.length; i++) {
+    const p = pat[i], v = vals[i];
+    if (isV(p)) {
+      if (anon(p)) continue;
+      if (p.v in nb) { if (nb[p.v] !== v) return null; } else nb[p.v] = v;
+    } else if (p !== v) return null;
+  }
+  return nb;
+}
+const groundPattern = (args, b) => args.map(a => isV(a) ? (anon(a) || !(a.v in b) ? null : b[a.v]) : a);
+const matchPattern = (pat, args) => pat.length === args.length && pat.every((p, i) => p === null || p === args[i]);
+function unifyHead(head, pat) {
+  const b = {};
+  for (let i = 0; i < head.length; i++) {
+    const p = pat[i], h = head[i];
+    if (p === null) continue;
+    if (isV(h)) { if (h.v in b && b[h.v] !== p) return null; b[h.v] = p; } else if (h !== p) return null;
+  }
+  return b;
+}
+const subst = (args, b) => args.map(a => isV(a) ? b[a.v] : a);
+
+// ---- body solver ----
+function groupBurst(c, b, facts) {
+  const groups = new Map();
+  for (const f of facts) {
+    const nb = unify(c.args, f.args, b);
+    if (!nb) continue;
+    const key = JSON.stringify(Object.keys(nb).sort().map(k => [k, nb[k]]));
+    if (!groups.has(key)) groups.set(key, { nb, fs: [] });
+    groups.get(key).fs.push(f);
+  }
+  for (const g of groups.values()) g.fs.sort((x, y) => x.time - y.time);
+  return [...groups.values()];
+}
+function* solveBurst(c, b, facts) {
+  for (const { nb, fs } of groupBurst(c, b, facts))
+    for (let i = 0; i + c.count <= fs.length; i++) {
+      const w = fs.slice(i, i + c.count);
+      if (w[w.length - 1].time - w[0].time <= c.window) { yield [nb, w]; break; }
+    }
+}
+function burstDiag(c, b, facts) {
+  const groups = groupBurst(c, b, facts);
+  if (!groups.length) return `no ${c.pred} events exist in the log`;
+  let best = null;
+  for (const { nb, fs } of groups) {
+    let m = 0, j = 0;
+    for (let i = 0; i < fs.length; i++) { while (fs[i].time - fs[j].time > c.window) j++; m = Math.max(m, i - j + 1); }
+    if (!best || m > best.m || (m === best.m && fs.length > best.total)) best = { m, total: fs.length, nb };
+  }
+  const who = `${c.pred}(${fmtArgs(groundPattern(c.args, best.nb))})`;
+  return best.total >= c.count
+    ? `closest miss: ${best.total} x ${who} in total, but at most ${best.m} fall inside any ${c.window}s window (needs ${c.count})`
+    : `closest miss: only ${best.m} x ${who} (needs ${c.count} within ${c.window}s)`;
+}
+function* solveBody(body, i, b, nodes, times, ctx) {
+  if (i === body.length) { yield [b, nodes, times]; return; }
+  const c = body[i];
+  if (c.t === 'atom') {
+    const pat = groundPattern(c.args, b);
+    ctx.cond(`need ${c.pred}(${fmtArgs(pat)})`);
+    let found = false;
+    for (const [args, nd] of ctx.atoms(c.pred, pat)) {
+      const nb = unify(c.args, args, b);
+      if (!nb) continue;
+      found = true;
+      const nt = { ...times };
+      if (c.label) nt[c.label] = nd;
+      yield* solveBody(body, i + 1, nb, [...nodes, nd], nt, ctx);
+    }
+    if (!found) ctx.fail(`no ${c.pred}(${fmtArgs(pat)}) can be established`);
+  } else if (c.t === 'burst') {
+    ctx.cond(`need >= ${c.count} x ${c.pred}(${fmtArgs(groundPattern(c.args, b))}) within ${c.window}s`);
+    let found = false;
+    for (const [nb, w] of solveBurst(c, b, ctx.events(c.pred))) {
+      found = true;
+      const span = w[w.length - 1].time - w[0].time;
+      const text = `${w.length}x ${c.pred}(${fmtArgs(groundPattern(c.args, nb))}) within ${span}s (limit ${c.window}s)`;
+      ctx.ok(text);
+      const nd = node(text, 'aggregate', w[w.length - 1].time, { children: w.map(f => node(fstr(f), 'fact', f.time, { row: f.row })) });
+      yield* solveBody(body, i + 1, nb, [...nodes, nd], times, ctx);
+    }
+    if (!found) ctx.fail(burstDiag(c, b, ctx.events(c.pred)));
+  } else { // within
+    const a = times[c.first], z = times[c.second], d = z.time - a.time;
+    ctx.cond(`timing: ${c.second} must come 0-${c.window}s after ${c.first}`);
+    if (d >= 0 && d <= c.window) {
+      ctx.ok(`timing OK: ${d}s <= ${c.window}s  (${a.text}  ->  ${z.text})`);
+      yield* solveBody(body, i + 1, b, nodes, times, ctx);
+    } else ctx.fail(`timing fails: ${z.text} is ${Math.abs(d)}s ${d >= 0 ? 'after' : 'BEFORE'} ${a.text} (allowed 0-${c.window}s)`);
+  }
+}
+function derivedNode(rule, args, nodes) {
+  const t = Math.max(...nodes.map(n => n.time));
+  return node(`${rule.head.pred}(${fmtArgs(args)})@${fmtTime(t)}`, 'derived', t, { rule: rule.id, args, children: nodes });
+}
+const emit = (tr, kind, text, depth = 0, extra = {}) => tr && tr.push({ kind, text, depth, ...extra });
+
+// ---- forward chaining ----
+function forwardChain(baseFacts, rules, tr) {
+  const byPred = {}, base = {};
+  for (const f of baseFacts) {
+    const e = [f, node(fstr(f), 'fact', f.time, { row: f.row })];
+    (byPred[f.pred] ||= []).push(e); (base[f.pred] ||= []).push(e);
+  }
+  const ctx = {
+    notes: [],
+    atoms: function* (pred, pat) { for (const [f, n] of [...(byPred[pred] || [])]) if (matchPattern(pat, f.args)) yield [f.args, n]; },
+    events: pred => (base[pred] || []).map(e => e[0]),
+    cond() {}, ok() {}, fail(t) { if (!this.notes.includes(t)) this.notes.push(t); },
+  };
+  const known = new Set(baseFacts.map(f => f.pred + JSON.stringify(f.args)));
+  const derived = []; let rounds = 0, changed = true;
+  while (changed) {
+    changed = false; rounds++;
+    emit(tr, 'round', `ROUND ${rounds}: sweep all ${rules.length} rules over working memory (${Object.values(byPred).reduce((s, v) => s + v.length, 0)} facts)`);
+    for (const rule of rules) {
+      ctx.notes = [];
+      emit(tr, 'rule', `Checking ${rule.id}: ${rule.description}`, 1, { rule: rule.id });
+      let fired = 0, already = 0;
+      for (const [b, nodes] of Array.from(solveBody(rule.body, 0, {}, [], {}, ctx))) {
+        const args = subst(rule.head.args, b), key = rule.head.pred + JSON.stringify(args);
+        if (known.has(key)) { already++; continue; }
+        const nd = derivedNode(rule, args, nodes), f = fact(rule.head.pred, args, nd.time);
+        known.add(key); (byPred[f.pred] ||= []).push([f, nd]);
+        derived.push({ round: rounds, rule, fact: f, node: nd });
+        changed = true; fired++;
+        emit(tr, 'fire', `${rule.id} FIRES -> new fact ${short(f)}. Reason: ${nodes.map(n => n.text).join('; ')}`, 1,
+          { rows: evidenceRows(nd), severity: rule.severity, rule: rule.id, args });
+      }
+      if (!fired) emit(tr, 'skip', already
+        ? `${rule.id}: still matches, but its conclusion is already known - nothing new.`
+        : `${rule.id} does not fire: ${ctx.notes.slice(0, 3).join(' | ') || 'its conditions are not met'}`, 1, { rule: rule.id });
+    }
+  }
+  emit(tr, 'done', `FIXED POINT after ${rounds} rounds: a full sweep derived nothing new, so inference stops. ${derived.length} fact(s) derived in total.`);
+  return { derived, rounds };
+}
+
+// ---- backward chaining ----
+class Prover {
+  constructor(facts, rules, tr) {
+    this.tr = tr; this.base = {}; this.rules = {};
+    for (const f of facts) (this.base[f.pred] ||= []).push(f);
+    for (const r of rules) (this.rules[r.head.pred] ||= []).push(r);
+  }
+  predicates() { return new Set([...Object.keys(this.base), ...Object.keys(this.rules)]); }
+  ask(pred, pat) { return Array.from(this.prove(pred, pat, [], 0)); }
+  *prove(pred, pat, stack, depth) {
+    const tr = this.tr, key = pred + JSON.stringify(pat);
+    emit(tr, 'goal', `GOAL: prove ${pred}(${fmtArgs(pat)})`, depth, { pred });
+    if (stack.includes(key)) { emit(tr, 'fail', 'this goal is already being proved higher up - stop (cycle guard)', depth + 1); return; }
+    const hits = (this.base[pred] || []).filter(f => matchPattern(pat, f.args));
+    if (hits.length) {
+      emit(tr, 'ok', `${hits.length} raw log fact(s) match directly: ${hits.slice(0, 3).map(fstr).join('; ')}${hits.length > 3 ? ' ...' : ''}`, depth + 1, { rows: hits.slice(0, 3).map(f => f.row) });
+      for (const f of hits) yield [f.args, node(fstr(f), 'fact', f.time, { row: f.row })];
+    } else if (!this.rules[pred]) emit(tr, 'fail', `no log fact matches and no rule concludes '${pred}'`, depth + 1);
+    const seen = new Set(), self = this;
+    for (const rule of this.rules[pred] || []) {
+      const b0 = unifyHead(rule.head.args, pat);
+      if (!b0) continue;
+      emit(tr, 'rule', `Try ${rule.id}: ${rule.description}. To prove the goal I must establish its IF-part:`, depth + 1, { rule: rule.id });
+      let n = 0;
+      const d2 = depth + 2, st2 = [...stack, key];
+      const ctx = {
+        atoms: (p, q) => Array.from(self.prove(p, q, st2, d2 + 1)),
+        events: p => self.base[p] || [],
+        cond: t => emit(tr, 'cond', t, d2, { rule: rule.id }), fail: t => emit(tr, 'fail', t, d2 + 1, { rule: rule.id }), ok: t => emit(tr, 'ok', t, d2 + 1, { rule: rule.id }),
+      };
+      for (const [b, nodes] of solveBody(rule.body, 0, b0, [], {}, ctx)) {
+        const args = subst(rule.head.args, b), k = JSON.stringify(args);
+        if (seen.has(k)) continue;
+        seen.add(k); n++;
+        const nd = derivedNode(rule, args, nodes);
+        emit(tr, 'ok', `${rule.id} satisfied -> ${pred}(${fmtArgs(args)}) is TRUE`, depth + 1, { rows: evidenceRows(nd), rule: rule.id, satisfied: true });
+        yield [args, nd];
+      }
+      if (!n) emit(tr, 'fail', `${rule.id} cannot be satisfied -> this route to the goal fails`, depth + 1, { rule: rule.id, route: true });
+    }
+  }
+}
+
+// ---- knowledge base (rules.py) ----
+const IP = V('IP'), U = V('U');
+const atom = (pred, args, label) => ({ t: 'atom', pred, args, label });
+const burst = (pred, args, count, window) => ({ t: 'burst', pred, args, count, window });
+const within = (first, second, window) => ({ t: 'within', first, second, window });
+const DEFAULTS = { R1: { count: 5, window: 60 }, R2: { window: 300 }, R3: { count: 21, window: 10 }, R4: { window: 5 } };
+function buildRules(p = {}) {
+  const q = { R1: { ...DEFAULTS.R1, ...p.R1 }, R2: { ...DEFAULTS.R2, ...p.R2 }, R3: { ...DEFAULTS.R3, ...p.R3 }, R4: { ...DEFAULTS.R4, ...p.R4 } };
+  return [
+    { id: 'R1', head: atom('brute_force', [IP]), body: [burst('failed_login', [IP, V('_u')], q.R1.count, q.R1.window)],
+      description: `${q.R1.count}+ failed logins from one IP within ${q.R1.window}s`, severity: 'high',
+      plain: 'One IP keeps failing to log in over a short period - typical of password guessing.',
+      story: a => `${a[0]} failed to log in many times within a short window - classic password guessing (brute force).` },
+    { id: 'R2', head: atom('account_compromised', [U]),
+      body: [atom('brute_force', [IP], 'brute_force'), atom('successful_login', [IP, U], 'login_ok'), within('brute_force', 'login_ok', q.R2.window)],
+      description: `successful login from a brute-forcing IP within ${q.R2.window}s`, severity: 'critical',
+      plain: 'If an IP was guessing passwords and then gets in, the guess probably worked.',
+      story: a => `The account "${a[0]}" was logged into right after a password-guessing attack, so the attacker probably guessed the password.` },
+    { id: 'R3', head: atom('port_scan', [IP]), body: [burst('connection_attempt', [IP, V('_p')], q.R3.count, q.R3.window)],
+      description: `${q.R3.count}+ connection attempts from one IP within ${q.R3.window}s`, severity: 'medium',
+      plain: 'One IP knocking on many ports very quickly - it is mapping which services are open.',
+      story: a => `${a[0]} tried a large number of connections within seconds - it is scanning for open ports.` },
+    { id: 'R4', head: atom('privilege_escalation', [U]),
+      body: [atom('login', [U], 'login'), atom('privilege_change', [U, 'admin'], 'admin_grant'), within('login', 'admin_grant', q.R4.window)],
+      description: `login followed by admin grant within ${q.R4.window}s`, severity: 'critical',
+      plain: 'A user who becomes admin seconds after logging in probably exploited something.',
+      story: a => `"${a[0]}" became an administrator seconds after logging in - a sign of privilege escalation.` },
+    { id: 'R5a', head: atom('is_intrusion', [U]), body: [atom('account_compromised', [U])],
+      description: 'compromised account is an intrusion', severity: 'critical',
+      plain: 'Any compromised account counts as a confirmed intrusion.',
+      story: a => `"${a[0]}" is declared an intrusion because their account was compromised.` },
+    { id: 'R5b', head: atom('is_intrusion', [U]), body: [atom('privilege_escalation', [U])],
+      description: 'privilege escalation is an intrusion', severity: 'critical',
+      plain: 'Any privilege escalation counts as a confirmed intrusion.',
+      story: a => `"${a[0]}" is declared an intrusion because they escalated their privileges.` },
+  ];
+}
+const RULES = buildRules();
+
+// ---- logs.py: CSV -> rows -> facts ----
+function parseCsv(text) {
+  const [head, ...lines] = text.trim().split(/\r?\n/);
+  const cols = head.split(',');
+  const rows = lines.map(l => { const p = l.split(','); return Object.fromEntries(cols.map((c, i) => [c, (p[i] || '').trim()])); });
+  return rows.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+}
+function rowToFacts(r, idx) {
+  const t = Date.parse(r.timestamp.replace(' ', 'T') + 'Z') / 1000, ev = r.event.toUpperCase();
+  if (isNaN(t)) throw new Error(`bad timestamp '${r.timestamp}'`);
+  if (ev === 'LOGIN_FAILED') return [fact('failed_login', [r.src_ip, r.user], t, idx)];
+  if (ev === 'LOGIN_SUCCESS') return [fact('successful_login', [r.src_ip, r.user], t, idx), fact('login', [r.user], t, idx)];
+  if (ev === 'CONNECTION') return [fact('connection_attempt', [r.src_ip, parseInt(r.detail, 10)], t, idx)];
+  if (ev === 'PRIV_CHANGE') return [fact('privilege_change', [r.user, r.detail], t, idx)];
+  throw new Error(`unknown event type '${ev}'`);
+}
+const rowsToFacts = rows => rows.flatMap((r, i) => rowToFacts(r, i));
+
+function parseGoal(text) {
+  const m = /^\s*(\w+)\s*\((.*)\)\s*$/.exec(text || '');
+  if (!m) throw new Error('goal must look like predicate(arg, ...), e.g. is_intrusion(carol)');
+  const pat = m[2].split(',').map(t => t.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+    .map(t => (/^[A-Z_]/.test(t) ? null : /^\d+$/.test(t) ? parseInt(t, 10) : t));
+  return [m[1], pat];
+}
+function renderTree(n, prefix = '', last = true, root = true) {
+  const tag = n.rule ? `  [${n.rule}]` : '';
+  let lines = root ? [n.text + tag] : [prefix + (last ? '└─ ' : '├─ ') + n.text + tag];
+  const cp = root ? '' : prefix + (last ? '   ' : '│  ');
+  let kids = n.children;
+  if (n.kind === 'aggregate' && kids.length > 4) kids = [kids[0], kids[1], node(`... ${kids.length - 3} more ...`, 'fact', 0), kids[kids.length - 1]];
+  kids.forEach((k, i) => lines.push(renderTree(k, cp, i === kids.length - 1, false)));
+  return lines.join('\n');
+}
+if (typeof module !== 'undefined') module.exports = { RULES, buildRules, parseCsv, rowsToFacts, forwardChain, Prover, parseGoal, short, fmtArgs };
+
+// ===== UI: drag & drop builders, step-through inference, plain-English explanations =====
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ICON = { start: '◉', round: '⟳', rule: '▸', fire: '🔥', skip: '·', goal: '?', cond: '→', ok: '✓', fail: '✗', done: '■' };
+const SEV = { critical: 'Critical', high: 'High', medium: 'Medium' };
+const RULE_IDS = ['R1', 'R2', 'R3', 'R4', 'R5a', 'R5b'];
+const DEPS = { R2: ['R1'], R5a: ['R2'], R5b: ['R4'] };
+const PARAM_UI = { R1: [['count', 'min fails', 1, 50], ['window', 'within s', 1, 3600]], R2: [['window', 'within s', 1, 86400]],
+  R3: [['count', 'min conns', 2, 500], ['window', 'within s', 1, 600]], R4: [['window', 'within s', 1, 3600]] };
+
+let store = [], ruleOrder = [...RULE_IDS], params = JSON.parse(JSON.stringify(DEFAULTS));
+let rows = [], facts = [], run = null, timer = null, lastAlerts = null;
+const lib = () => Object.fromEntries(buildRules(params).map(r => [r.id, r]));
+const rowKey = r => [r.timestamp, r.event, r.user, r.src_ip, r.detail].join('|');
+
+// ---------- state changes ----------
+function toast(msg, bad) {
+  const t = $('toast'); t.textContent = msg; t.className = 'show' + (bad ? ' bad' : '');
+  clearTimeout(toast.h); toast.h = setTimeout(() => (t.className = ''), 2600);
+}
+function addRows(list, tag) {
+  const have = new Set(store.map(rowKey)); let n = 0;
+  for (const r of list) if (!have.has(rowKey(r))) { store.push({ ...r, b: tag }); have.add(rowKey(r)); n++; }
+  return n;
+}
+function addBundle(id) {
+  const b = BUNDLES.find(x => x.id === id);
+  if (store.some(r => r.b === id)) return toast(`"${b.name}" is already in the log`);
+  addRows(b.rows, id); changed(`Added "${b.name}" (${b.rows.length} events)`);
+}
+function removeBundle(id) { store = store.filter(r => r.b !== id); changed('Removed scenario from the log'); }
+function importCsv(text, name) {
+  try {
+    const parsed = parseCsv(text);
+    if (!parsed.length || !('timestamp' in parsed[0] && 'event' in parsed[0] && 'src_ip' in parsed[0]))
+      throw new Error('CSV needs the columns: timestamp,event,user,src_ip,detail');
+    parsed.forEach((r, i) => { try { rowToFacts(r, i); } catch (e) { throw new Error(`row ${i + 1}: ${e.message}`); } });
+    const n = addRows(parsed, 'csv'); changed(`Imported ${n} new events from ${name}`);
+  } catch (e) { toast(e.message, true); }
+}
+function addRule(id, before) {
+  if (ruleOrder.includes(id)) return toast(`${id} is already active`);
+  const i = before ? ruleOrder.indexOf(before) : -1;
+  i < 0 ? ruleOrder.push(id) : ruleOrder.splice(i, 0, id); changed(`Rule ${id} activated`);
+}
+function moveRule(id, before) {
+  if (id === before) return;
+  ruleOrder = ruleOrder.filter(x => x !== id);
+  const i = before ? ruleOrder.indexOf(before) : -1;
+  i < 0 ? ruleOrder.push(id) : ruleOrder.splice(i, 0, id); changed('Rule order changed');
+}
+function removeRule(id) { ruleOrder = ruleOrder.filter(x => x !== id); changed(`Rule ${id} deactivated`); }
+
+function changed(msg) {
+  stop(); run = null; lastAlerts = null;
+  rows = store.slice().sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+  facts = rowsToFacts(rows);
+  renderBuilders(); renderRun();
+  if (msg) toast(msg + ' - run inference again');
+}
+
+// ---------- builders ----------
+function renderBuilders() {
+  $('bundles').innerHTML = BUNDLES.map(b => {
+    const on = store.some(r => r.b === b.id);
+    return `<div class="card lib-card ${on ? 'on' : ''}" draggable="true" data-drag="bundle:${b.id}">
+      <div class="ic">${b.icon}</div><div class="grow"><b>${esc(b.name)}</b><small>${esc(b.desc)}</small></div>
+      <button class="mini" data-addb="${b.id}" title="Add to log" ${on ? 'disabled' : ''}>${on ? '✓' : '+'}</button></div>`;
+  }).join('');
+  const present = BUNDLES.filter(b => store.some(r => r.b === b.id));
+  const csvN = store.filter(r => r.b === 'csv').length;
+  $('logchips').innerHTML = present.map(b => `<span class="chip" draggable="true" data-drag="abundle:${b.id}">${b.icon} ${esc(b.name)}<button data-rmb="${b.id}" title="Remove">×</button></span>`).join('')
+    + (csvN ? `<span class="chip">📄 Imported CSV (${csvN})<button data-rmb="csv" title="Remove">×</button></span>` : '');
+  $('logbody').innerHTML = rows.map((r, i) => `<tr id="r${i}"><td>${i}</td><td>${esc(r.timestamp.slice(11))}</td><td><span class="ev ${r.event}">${esc(r.event.replace('_', ' ').toLowerCase())}</span></td>
+    <td>${esc(r.user)}</td><td>${esc(r.src_ip)}</td><td>${esc(r.detail)}</td><td class="fx">${esc(rowToFacts(r, i).map(short).join(' · '))}</td><td><button class="x" data-rmrow="${i}" title="Remove event">×</button></td></tr>`).join('');
+  $('logempty').style.display = rows.length ? 'none' : 'flex';
+
+  const L = lib(), act = new Set(ruleOrder);
+  $('ruleLib').innerHTML = RULE_IDS.map(id => `<div class="card lib-card rule ${act.has(id) ? 'on' : ''}" draggable="true" data-drag="rule:${id}">
+      <div class="ic rid">${id}</div><div class="grow"><b>${esc(L[id].description)}</b><small>${esc(L[id].plain)}</small></div>
+      <button class="mini" data-addr="${id}" ${act.has(id) ? 'disabled' : ''}>${act.has(id) ? '✓' : '+'}</button></div>`).join('');
+  $('ruleZone').innerHTML = ruleOrder.map((id, k) => {
+    const r = L[id], miss = (DEPS[id] || []).filter(d => !act.has(d));
+    const inputs = (PARAM_UI[id] || []).map(([key, label, lo, hi]) => `<label>${label}<input type="number" min="${lo}" max="${hi}" value="${params[id][key]}" data-p="${id}.${key}"></label>`).join('');
+    return `<div class="card rcard sev-${r.severity}" data-id="${id}"><span class="handle" draggable="true" data-drag="arule:${id}" title="Drag to reorder or drag out to remove">⠿</span>
+      <div class="grow"><div class="rtop"><b class="rid">${id}</b><span class="sev ${r.severity}">${SEV[r.severity]}</span><span class="order">#${k + 1}</span></div>
+      <div class="rdesc">${esc(r.description)} <i>⇒ ${r.head.pred}</i></div>
+      ${inputs ? `<div class="params">${inputs}</div>` : ''}
+      ${miss.length ? `<div class="warn">⚠ needs ${miss.join(', ')} active - otherwise it can never fire</div>` : ''}</div>
+      <button class="x" data-rmr="${id}" title="Deactivate">×</button></div>`;
+  }).join('');
+  $('ruleEmpty').style.display = ruleOrder.length ? 'none' : 'flex';
+  kpis();
+}
+function kpis() {
+  $('k-ev').textContent = rows.length; $('k-fx').textContent = facts.length; $('k-ru').textContent = ruleOrder.length;
+  $('k-al').textContent = lastAlerts === null ? '–' : lastAlerts;
+}
+
+// ---------- plain-English explanations ----------
+function explain(e, mode) {
+  const L = lib(), r = e.rule && L[e.rule], t = e.text;
+  const R = (title, body, k) => ({ title, body, k });
+  switch (e.kind) {
+    case 'start': return mode === 'fwd'
+      ? R('Forward chaining: from evidence to conclusions', 'Every log line was turned into a small <b>fact</b>, such as <code>failed_login(IP, user)</code>. Forward chaining works like a detective: look at everything known, find a rule whose <b>IF</b> part is already true, write its <b>THEN</b> part down as a new fact, and repeat until nothing new appears.', 'goal')
+      : R('Backward chaining: from a claim to its proof', 'You start with a <b>hypothesis</b>. The engine behaves like a lawyer: "to prove this, which rule could establish it, and is every condition of that rule true in the log?" Conditions that are themselves conclusions become <b>sub-goals</b>, until the chain reaches raw log lines - or a dead end.', 'goal');
+    case 'round': return R(t.split(':')[0].replace('ROUND', 'Round'), 'One <b>round</b> is a full pass of every active rule over everything currently known. Conclusions from early rules can unlock later ones, so the engine keeps making passes until a pass teaches it nothing new.', 'round');
+    case 'rule': return mode === 'fwd'
+      ? R(`Testing rule ${e.rule}`, `Think of <b>${e.rule}</b> as a tripwire: <i>${esc(r ? r.plain : '')}</i> The engine now checks whether the log, plus earlier conclusions, satisfies its conditions.`, 'rule')
+      : R(`A possible route: ${e.rule}`, `<b>${e.rule}</b> can conclude the thing we want: <i>${esc(r ? r.plain : '')}</i> If all its conditions hold, the goal is proven. The engine now checks them one by one.`, 'rule');
+    case 'fire': return R(`🔥 Rule ${e.rule} fired`, `${esc(r.story(e.args))} <br><br>The highlighted log rows are the <b>evidence</b>. The conclusion <code>${esc(t.split(' -> new fact ')[1].split('. Reason')[0])}</code> is now a known fact, so rules that depend on it can fire next.`, 'fire');
+    case 'skip':
+      if (t.includes('already known')) return R('Nothing new here', 'This rule still matches, but what it concludes is already known, so there is nothing to add. It is not counted as new progress.', 'skip');
+      if (t.includes('closest miss')) return R('Close, but not an alarm', 'The log shows <i>some</i> of this behaviour, but not enough, or not fast enough, to cross the threshold. That is how rules avoid crying wolf on typos and slow, ordinary traffic.', 'skip');
+      if (t.includes('timing fails')) return R('Right events, wrong timing', 'Both events exist, but too far apart. Attacks like this happen within seconds, so a long gap means ordinary behaviour.', 'skip');
+      return R('A missing ingredient', 'A fact this rule depends on is not known - for example because the rule that would produce it is switched off, or the log has no matching events.', 'skip');
+    case 'done': return mode === 'fwd'
+      ? R('Fixed point reached', 'A full pass over all rules produced nothing new, so everything the rules can conclude from this log is now known. The engine stops here, and the alerts below are the final answer.', 'fire')
+      : R(t.startsWith('YES') ? 'Claim proven' : 'Claim cannot be proven', t.startsWith('YES')
+        ? 'At least one chain of rules leads from raw log lines up to the claim. The proof tree below shows the exact chain, with the log rows that back it up.'
+        : 'No chain of rules and log facts supports the claim. Scroll the trace for the red lines: they say exactly which ingredient was missing - that is the "why not" answer.', t.startsWith('YES') ? 'fire' : 'fail');
+    case 'goal': return e.depth === 0
+      ? R('The claim to prove', `The engine takes <code>${esc(t.replace('GOAL: prove ', ''))}</code> as the thing to establish and looks for either a matching log line or a rule that concludes it.`, 'goal')
+      : R('Sub-goal: a smaller claim first', `To settle the bigger claim, the engine needs <code>${esc(t.replace('GOAL: prove ', ''))}</code> to be true first. Same procedure, one level down - this recursion is the heart of backward chaining.`, 'goal');
+    case 'cond': return R('Checking one condition', 'Each rule has ingredients (an IF part). This is the next ingredient: either a raw log fact, a threshold over time, or another conclusion that needs its own proof.', 'goal');
+    case 'ok':
+      if (e.satisfied) return R(`Route ${e.rule} succeeded`, 'Every ingredient of this rule was found, so the claim is proven along this route. The highlighted rows are the supporting evidence.', 'fire');
+      if (t.includes('raw log fact')) return R('Evidence found in the log', 'A real log event matches directly, so this sub-goal needs no further rules. It is a leaf of the proof tree.', 'fire');
+      return R('Condition holds', 'This ingredient is satisfied by the log: enough events, close enough together, in the right order.', 'fire');
+    case 'fail':
+      if (t.includes('closest miss')) return R('Dead end: below the threshold', 'Not enough activity inside the time window, so the engine treats this as normal. The numbers show how close it came.', 'fail');
+      if (t.includes('timing fails')) return R('Dead end: wrong timing', 'The two events exist but are too far apart for this attack pattern, so this route does not hold.', 'fail');
+      if (e.route) return R(`Route ${e.rule} fails`, 'One of this rule\'s ingredients could not be established. The engine backtracks and tries another rule, if any.', 'fail');
+      return R('Dead end: nothing to build on', 'Neither the log nor any active rule can establish this fact. If you expected it, check that the needed rule is active (drag it in!) and that the log contains the events.', 'fail');
+  }
+  return R('', '', 'skip');
+}
+function evidence(idx) {
+  if (!idx || !idx.length) return '';
+  const line = n => { const r = rows[n]; return r ? `<li><b>#${n}</b> ${esc(r.timestamp.slice(11))} ${esc(r.event.toLowerCase())} ${esc(r.user)} ${esc(r.src_ip)} ${esc(r.detail)}</li>` : ''; };
+  return `<div class="evid"><div class="pane-t">Evidence in the log (highlighted yellow)</div><ul>${idx.slice(0, 4).map(line).join('')}${idx.length > 4 ? `<li class="muted">+ ${idx.length - 4} more rows</li>` : ''}</ul></div>`;
+}
+function plainProof(n, d = 0, out = []) {
+  const L = lib();
+  if (n.kind === 'derived') { out.push({ d, t: L[n.rule].story(n.args), tag: n.rule }); n.children.forEach(c => plainProof(c, d + 1, out)); }
+  else if (n.kind === 'aggregate') out.push({ d, t: `Evidence: ${n.text}`, tag: 'log' });
+  else out.push({ d, t: `Log line: ${n.text}`, tag: 'log' });
+  return out;
+}
+
+// ---------- inference runner ----------
+function begin(mode, events, results) { run = { mode, events, i: 1, results }; renderRun(); }
+function guard(fn) { try { fn(); } catch (e) { toast(e.message, true); } }
+function runForward() {
+  stop(); const ev = [], rules = ruleOrder.map(id => lib()[id]);
+  ev.push({ kind: 'start', depth: 0, text: `Fact extraction: ${rows.length} log rows became ${facts.length} facts in working memory.` });
+  const res = forwardChain(facts, rules, ev);
+  lastAlerts = res.derived.length; kpis();
+  const items = res.derived.slice().sort((a, b) => a.node.time - b.node.time);
+  const html = `<div class="panel summary"><h3>🧾 In plain English</h3>${items.length ? '<ul>' + items.map(d =>
+    `<li><span class="sev ${d.rule.severity}">${SEV[d.rule.severity]}</span> ${esc(d.rule.story(d.fact.args))}</li>`).join('') + '</ul>'
+    : '<p class="muted">No attack pattern matched. Either the log is clean, or the rules that would detect it are switched off.</p>'}</div>
+    <div class="panel"><h3>⌨ Code output · alerts with proof trees</h3>${items.map(d =>
+    `<pre><b>[${d.rule.severity.toUpperCase()}] ${esc(short(d.fact))}</b>\n${esc(renderTree(d.node))}</pre>`).join('') || '<p class="muted">(none)</p>'}</div>`;
+  begin('fwd', ev, html);
+}
+function runBackward() {
+  stop(); const [pred, pat] = parseGoal($('goal').value), ev = [], rules = ruleOrder.map(id => lib()[id]);
+  const pr = new Prover(facts, rules, ev), known = new Set([...pr.predicates(), ...RULE_IDS.map(id => lib()[id].head.pred)]);
+  if (!known.has(pred)) throw new Error(`unknown predicate '${pred}'. Try: ${[...known].sort().join(', ')}`);
+  ev.push({ kind: 'start', depth: 0, text: `Hypothesis: ${pred}(${fmtArgs(pat)})` });
+  const ans = pr.ask(pred, pat), yes = ans.length > 0;
+  const verdict = yes ? `YES - ${ans.length} proof(s) found` : 'NO - no proof exists with the current log and rules';
+  ev.push({ kind: 'done', depth: 0, text: verdict });
+  const html = `<div class="panel summary ${yes ? 'yes' : 'no'}"><h3>${yes ? '✅' : '❌'} ${esc(verdict)}</h3>${yes
+    ? ans.map(([a, n]) => `<p class="muted">Why <code>${esc(pred)}(${esc(fmtArgs(a))})</code> is true:</p><ul class="chain">${plainProof(n).map(l =>
+      `<li style="margin-left:${l.d * 18}px"><span class="tag">${l.tag}</span> ${esc(l.t)}</li>`).join('')}</ul>`).join('')
+    : '<p class="muted">Step through the trace: the red lines say exactly what was missing.</p>'}</div>
+    ${yes ? `<div class="panel"><h3>⌨ Code output · proof trees</h3>${ans.map(([a, n]) => `<pre><b>${esc(pred)}(${esc(fmtArgs(a))})</b>\n${esc(renderTree(n))}</pre>`).join('')}</div>` : ''}`;
+  begin('bwd', ev, html);
+}
+function renderRun() {
+  const has = !!run;
+  ['step', 'play', 'all'].forEach(id => ($(id).disabled = !has || run.i >= run.events.length));
+  document.querySelectorAll('#log tr.hl').forEach(el => el.classList.remove('hl'));
+  if (!has) {
+    $('story').innerHTML = '<li class="muted">Run forward chaining, or ask a question, to see the engine think.</li>';
+    $('explain').className = 'panel callout'; $('explain').innerHTML = '<div class="ct">What is happening, in plain English</div><p class="muted">Every step of the engine\'s trace appears on the left as code output. Here you get the same step explained for humans, highlighted.</p>';
+    $('bar').style.width = '0'; $('results').innerHTML = ''; return;
+  }
+  const { events, i, mode } = run, shown = events.slice(0, i), cur = shown[i - 1];
+  $('story').innerHTML = shown.map((e, k) => `<li class="${e.kind}${k === i - 1 ? ' cur' : ''}" style="--d:${e.depth}"><span class="ico">${ICON[e.kind] || ''}</span><span>${esc(e.text)}</span></li>`).join('');
+  const li = $('story').querySelector('.cur'); if (li) $('story').scrollTop = li.offsetTop - $('story').clientHeight + li.offsetHeight + 12;
+  const x = explain(cur, mode);
+  $('explain').className = `panel callout k-${x.k}`;
+  $('explain').innerHTML = `<div class="ct">What is happening · step ${i} of ${events.length}</div><h4>${x.title}</h4><p>${x.body}</p>${evidence(cur.rows)}`;
+  (cur.rows || []).forEach(n => { const el = $('r' + n); if (el) el.classList.add('hl'); });
+  if ((cur.rows || []).length) { const el = $('r' + cur.rows[0]), sc = el && el.closest('.scroll'); if (sc) sc.scrollTop = el.offsetTop - 40; }
+  $('bar').style.width = (100 * i / events.length) + '%';
+  $('results').innerHTML = i >= events.length ? run.results : '';
+}
+function step() { if (run && run.i < run.events.length) { run.i++; renderRun(); } else stop(); }
+function stop() { clearInterval(timer); timer = null; $('play').textContent = '▶ Play'; }
+function togglePlay() {
+  if (timer) return stop();
+  $('play').textContent = '⏸ Pause';
+  timer = setInterval(() => { if (!run || run.i >= run.events.length) { stop(); renderRun(); } else step(); }, +$('speed').value);
+}
+
+// ---------- events ----------
+$('fwd').onclick = () => guard(runForward);
+$('ask').onclick = () => guard(runBackward);
+$('goal').onkeydown = e => { if (e.key === 'Enter') $('ask').click(); };
+$('step').onclick = () => { stop(); step(); };
+$('play').onclick = togglePlay;
+$('all').onclick = () => { stop(); run.i = run.events.length; renderRun(); };
+$('theme').onclick = () => { const d = document.documentElement, dark = d.dataset.theme ? d.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; d.dataset.theme = dark ? 'light' : 'dark'; };
+$('csvbtn').onclick = () => $('csvfile').click();
+$('csvfile').onchange = e => { const f = e.target.files[0]; if (f) f.text().then(t => importCsv(t, f.name)); e.target.value = ''; };
+$('clearlog').onclick = () => { store = []; changed('Log cleared'); };
+$('resetlog').onclick = () => { store = []; BUNDLES.forEach(b => addRows(b.rows, b.id)); changed('Sample log restored'); };
+$('allrules').onclick = () => { ruleOrder = [...RULE_IDS]; changed('All rules active'); };
+$('norules').onclick = () => { ruleOrder = []; changed('All rules deactivated'); };
+document.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { $('goal').value = b.dataset.g; $('ask').click(); });
+document.addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.addb) addBundle(t.dataset.addb);
+  else if (t.dataset.addr) addRule(t.dataset.addr);
+  else if (t.dataset.rmb) removeBundle(t.dataset.rmb);
+  else if (t.dataset.rmr) removeRule(t.dataset.rmr);
+  else if (t.dataset.rmrow) { store.splice(store.indexOf(rows[+t.dataset.rmrow]), 1); changed(); }
+});
+document.addEventListener('change', e => {
+  const p = e.target.dataset && e.target.dataset.p; if (!p) return;
+  const [id, key] = p.split('.'), v = Number(e.target.value);
+  if (!(v > 0)) { toast('Thresholds must be positive numbers', true); return renderBuilders(); }
+  params[id][key] = key === 'count' ? Math.round(v) : v; changed(`${id} updated`);
+});
+
+// ---------- drag & drop ----------
+document.addEventListener('dragstart', e => {
+  const el = e.target.closest && e.target.closest('[data-drag]'); if (!el) return;
+  e.dataTransfer.setData('text/plain', el.dataset.drag); e.dataTransfer.effectAllowed = 'move';
+  const card = el.closest('.card') || el; try { e.dataTransfer.setDragImage(card, 12, 12); } catch (_) {}
+  card.classList.add('dragging'); document.body.classList.add('dnd');
+});
+document.addEventListener('dragend', () => endDrag());
+const ZONES = {
+  logzone: (d, x) => { if (x.files.length) { const f = x.files[0]; return f.text().then(t => importCsv(t, f.name)); }
+    if (d.startsWith('bundle:')) addBundle(d.slice(7)); },
+  bundles: d => { if (d.startsWith('abundle:')) removeBundle(d.slice(8)); },
+  ruleZone: (d, x) => { if (d.startsWith('rule:')) addRule(d.slice(5), x.before); else if (d.startsWith('arule:')) moveRule(d.slice(6), x.before); },
+  ruleLib: d => { if (d.startsWith('arule:')) removeRule(d.slice(6)); },
+};
+function endDrag() {
+  document.querySelectorAll('.dragging').forEach(x => x.classList.remove('dragging'));
+  document.querySelectorAll('.over').forEach(x => x.classList.remove('over')); document.body.classList.remove('dnd');
+}
+Object.keys(ZONES).forEach(id => {
+  const z = $(id);
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('over'); });
+  z.addEventListener('dragleave', e => { if (!z.contains(e.relatedTarget)) z.classList.remove('over'); });
+  z.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    const d = e.dataTransfer.getData('text/plain') || '', c = e.target.closest && e.target.closest('.rcard');
+    const x = { files: [...e.dataTransfer.files], before: c ? c.dataset.id : null };
+    endDrag();
+    setTimeout(() => ZONES[id](d, x), 0);   // let the browser finish the drag (dragend) before the DOM changes
+  });
+});
+['dragover', 'drop'].forEach(n => window.addEventListener(n, e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); }));
+
+BUNDLES.forEach(b => addRows(b.rows, b.id));
+changed();
+
+</script>
+</body>
+</html>

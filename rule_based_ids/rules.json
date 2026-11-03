@@ -1,0 +1,190 @@
+{
+  "description": "Rule base for the Rule-Based IDS. Variables are IP and U (anonymous variables start with _). Rules are applied by forward and backward chaining.",
+  "fact_extraction": {
+    "LOGIN_FAILED": [
+      "failed_login(IP, U)"
+    ],
+    "LOGIN_SUCCESS": [
+      "successful_login(IP, U)",
+      "login(U)"
+    ],
+    "CONNECTION": [
+      "connection_attempt(IP, Port)"
+    ],
+    "PRIV_CHANGE": [
+      "privilege_change(U, Role)"
+    ]
+  },
+  "rules": [
+    {
+      "id": "R1",
+      "severity": "high",
+      "description": "5+ failed logins from one IP within 60s",
+      "plain_english": "One IP keeps failing to log in over a short period - typical of password guessing.",
+      "if": [
+        {
+          "type": "burst",
+          "predicate": "failed_login",
+          "args": [
+            "IP",
+            "_u"
+          ],
+          "min_count": 5,
+          "within_seconds": 60
+        }
+      ],
+      "then": {
+        "predicate": "brute_force",
+        "args": [
+          "IP"
+        ]
+      },
+      "as_text": "R1: >=5x failed_login(IP, _u) within 60s  =>  brute_force(IP)"
+    },
+    {
+      "id": "R2",
+      "severity": "critical",
+      "description": "successful login from a brute-forcing IP within 300s",
+      "plain_english": "If an IP was guessing passwords and then gets in, the guess probably worked.",
+      "if": [
+        {
+          "type": "fact",
+          "predicate": "brute_force",
+          "args": [
+            "IP"
+          ],
+          "label": "brute_force"
+        },
+        {
+          "type": "fact",
+          "predicate": "successful_login",
+          "args": [
+            "IP",
+            "U"
+          ],
+          "label": "login_ok"
+        },
+        {
+          "type": "timing",
+          "first": "brute_force",
+          "second": "login_ok",
+          "max_gap_seconds": 300
+        }
+      ],
+      "then": {
+        "predicate": "account_compromised",
+        "args": [
+          "U"
+        ]
+      },
+      "as_text": "R2: [brute_force] brute_force(IP) AND [login_ok] successful_login(IP, U) AND login_ok within 300s after brute_force  =>  account_compromised(U)"
+    },
+    {
+      "id": "R3",
+      "severity": "medium",
+      "description": "21+ connection attempts from one IP within 10s",
+      "plain_english": "One IP knocking on many ports very quickly - it is mapping which services are open.",
+      "if": [
+        {
+          "type": "burst",
+          "predicate": "connection_attempt",
+          "args": [
+            "IP",
+            "_p"
+          ],
+          "min_count": 21,
+          "within_seconds": 10
+        }
+      ],
+      "then": {
+        "predicate": "port_scan",
+        "args": [
+          "IP"
+        ]
+      },
+      "as_text": "R3: >=21x connection_attempt(IP, _p) within 10s  =>  port_scan(IP)"
+    },
+    {
+      "id": "R4",
+      "severity": "critical",
+      "description": "login followed by admin grant within 5s",
+      "plain_english": "A user who becomes admin seconds after logging in probably exploited something.",
+      "if": [
+        {
+          "type": "fact",
+          "predicate": "login",
+          "args": [
+            "U"
+          ],
+          "label": "login"
+        },
+        {
+          "type": "fact",
+          "predicate": "privilege_change",
+          "args": [
+            "U",
+            "'admin'"
+          ],
+          "label": "admin_grant"
+        },
+        {
+          "type": "timing",
+          "first": "login",
+          "second": "admin_grant",
+          "max_gap_seconds": 5
+        }
+      ],
+      "then": {
+        "predicate": "privilege_escalation",
+        "args": [
+          "U"
+        ]
+      },
+      "as_text": "R4: [login] login(U) AND [admin_grant] privilege_change(U, 'admin') AND admin_grant within 5s after login  =>  privilege_escalation(U)"
+    },
+    {
+      "id": "R5a",
+      "severity": "critical",
+      "description": "compromised account is an intrusion",
+      "plain_english": "Any compromised account counts as a confirmed intrusion.",
+      "if": [
+        {
+          "type": "fact",
+          "predicate": "account_compromised",
+          "args": [
+            "U"
+          ]
+        }
+      ],
+      "then": {
+        "predicate": "is_intrusion",
+        "args": [
+          "U"
+        ]
+      },
+      "as_text": "R5a: account_compromised(U)  =>  is_intrusion(U)"
+    },
+    {
+      "id": "R5b",
+      "severity": "critical",
+      "description": "privilege escalation is an intrusion",
+      "plain_english": "Any privilege escalation counts as a confirmed intrusion.",
+      "if": [
+        {
+          "type": "fact",
+          "predicate": "privilege_escalation",
+          "args": [
+            "U"
+          ]
+        }
+      ],
+      "then": {
+        "predicate": "is_intrusion",
+        "args": [
+          "U"
+        ]
+      },
+      "as_text": "R5b: privilege_escalation(U)  =>  is_intrusion(U)"
+    }
+  ]
+}
