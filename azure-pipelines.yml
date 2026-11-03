@@ -1,0 +1,14 @@
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - checkout: self
+
+  - script: echo "Azure Pipeline for Rule-Based IDS is running!"
+    displayName: 'Run sample script'
+
+  - script: curl -I https://chief.mohithmj11.workers.dev/
+    displayName: 'Check that the website responds'
